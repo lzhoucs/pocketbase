@@ -10,6 +10,7 @@ import (
 
 // Moment represents a parsed single time moment.
 type Moment struct {
+	Second    int `json:"second"`
 	Minute    int `json:"minute"`
 	Hour      int `json:"hour"`
 	Day       int `json:"day"`
@@ -20,6 +21,7 @@ type Moment struct {
 // NewMoment creates a new Moment from the specified time.
 func NewMoment(t time.Time) *Moment {
 	return &Moment{
+		Second:    t.Second(),
 		Minute:    t.Minute(),
 		Hour:      t.Hour(),
 		Day:       t.Day(),
@@ -30,6 +32,7 @@ func NewMoment(t time.Time) *Moment {
 
 // Schedule stores parsed information for each time component when a cron job should run.
 type Schedule struct {
+	Seconds    map[int]struct{} `json:"seconds"`
 	Minutes    map[int]struct{} `json:"minutes"`
 	Hours      map[int]struct{} `json:"hours"`
 	Days       map[int]struct{} `json:"days"`
@@ -39,6 +42,10 @@ type Schedule struct {
 
 // IsDue checks whether the provided Moment satisfies the current Schedule.
 func (s *Schedule) IsDue(m *Moment) bool {
+	if _, ok := s.Seconds[m.Second]; !ok {
+		return false
+	}
+
 	if _, ok := s.Minutes[m.Minute]; !ok {
 		return false
 	}
@@ -63,19 +70,19 @@ func (s *Schedule) IsDue(m *Moment) bool {
 }
 
 var macros = map[string]string{
-	"@yearly":   "0 0 1 1 *",
-	"@annually": "0 0 1 1 *",
-	"@monthly":  "0 0 1 * *",
-	"@weekly":   "0 0 * * 0",
-	"@daily":    "0 0 * * *",
-	"@midnight": "0 0 * * *",
-	"@hourly":   "0 * * * *",
+	"@yearly":   "0 0 0 1 1 *",
+	"@annually": "0 0 0 1 1 *",
+	"@monthly":  "0 0 0 1 * *",
+	"@weekly":   "0 0 0 * * 0",
+	"@daily":    "0 0 0 * * *",
+	"@midnight": "0 0 0 * * *",
+	"@hourly":   "0 0 * * * *",
 }
 
 // NewSchedule creates a new Schedule from a cron expression.
 //
-// A cron expression could be a macro OR 5 segments separated by space,
-// representing: minute, hour, day of the month, month and day of the week.
+// A cron expression could be a macro OR 6 segments separated by space,
+// representing: second, minute, hour, day of the month, month and day of the week.
 //
 // The following segment formats are supported:
 //   - wildcard: *
@@ -95,36 +102,42 @@ func NewSchedule(cronExpr string) (*Schedule, error) {
 	}
 
 	segments := strings.Split(cronExpr, " ")
-	if len(segments) != 5 {
-		return nil, errors.New("invalid cron expression - must be a valid macro or to have exactly 5 space separated segments")
+	if len(segments) != 6 {
+		return nil, errors.New("invalid cron expression - must be a valid macro or to have exactly 6 space separated segments")
 	}
 
-	minutes, err := parseCronSegment(segments[0], 0, 59)
+	seconds, err := parseCronSegment(segments[0], 0, 59)
 	if err != nil {
 		return nil, err
 	}
 
-	hours, err := parseCronSegment(segments[1], 0, 23)
+	minutes, err := parseCronSegment(segments[1], 0, 59)
 	if err != nil {
 		return nil, err
 	}
 
-	days, err := parseCronSegment(segments[2], 1, 31)
+	hours, err := parseCronSegment(segments[2], 0, 23)
 	if err != nil {
 		return nil, err
 	}
 
-	months, err := parseCronSegment(segments[3], 1, 12)
+	days, err := parseCronSegment(segments[3], 1, 31)
 	if err != nil {
 		return nil, err
 	}
 
-	daysOfWeek, err := parseCronSegment(segments[4], 0, 6)
+	months, err := parseCronSegment(segments[4], 1, 12)
+	if err != nil {
+		return nil, err
+	}
+
+	daysOfWeek, err := parseCronSegment(segments[5], 0, 6)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Schedule{
+		Seconds:    seconds,
 		Minutes:    minutes,
 		Hours:      hours,
 		Days:       days,
